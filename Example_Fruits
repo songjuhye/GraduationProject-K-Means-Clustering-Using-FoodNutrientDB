@@ -1,0 +1,99 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib
+
+matplotlib.rcParams['font.family'] ='Malgun Gothic'
+matplotlib.rcParams['axes.unicode_minus'] =False
+############################################################################
+
+file_csv = open('data/식품성분표(9개정판)_과일류_csv.csv', 'r', encoding='utf-8')
+df= pd.read_csv(file_csv)
+
+vitB6 = df.iloc[:, 5]
+DFE = df.iloc[:, 6]
+vitB12 = df.iloc[:, 7]
+
+df_var3 = pd.DataFrame({'VitB6' : vitB6,
+                          'DFE' : DFE,
+                          'VitB12' : vitB12 })
+
+###################################################################################
+# MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
+
+minmax_scaler = MinMaxScaler()
+minmax_ouput = minmax_scaler.fit_transform(df_var3)
+
+print("MinMaxScaler 적용(표준화)\n")
+print('\n스케일 조정 전 features Min value : \n {}'.format(df_var3.min(axis=0)))
+print('\n스케일 조정 전 features Max value : \n {}'.format(df_var3.max(axis=0)))
+print('\n스케일 조정 후 features Min value : \n {}'.format(minmax_ouput.min(axis=0)))
+print('\n스케일 조정 후 features Max value : \n {}'.format(minmax_ouput.max(axis=0)))
+
+##########
+
+afterScaling_df = pd.DataFrame({'vitB6' : minmax_ouput[:, 0],
+                          'DFE' : minmax_ouput[:, 1],
+                          'vitB12' : minmax_ouput[:, 2] })
+
+######################################################################
+#스케일링 후 데이터 자료형 및 전치행렬 변환
+data_3d = [afterScaling_df['vitB6'], afterScaling_df['DFE'], afterScaling_df['vitB12']]
+data_3d = np.array(data_3d)
+data_3d = np.transpose(data_3d)
+
+######################################################################
+# k-means algorithm을 이용한 clustering
+# x = 비타민 B6, y = 엽산, z = 비타민 B12
+
+from sklearn.cluster import KMeans
+
+kmeans = KMeans(n_clusters=5, init='k-means++', max_iter=300, n_init=10, random_state=0)
+pred_y = kmeans.fit_predict(data_3d)
+print(kmeans.cluster_centers_)
+colormap = np.array(['c', 'g', 'b', 'm', 'y'])
+
+plot1 = plt.figure(1)
+graph1 = plot1.add_subplot(111, projection='3d')
+graph1.scatter(afterScaling_df['vitB6'], afterScaling_df['DFE'], afterScaling_df['vitB12'], c=colormap[pred_y])
+graph1.scatter(kmeans.cluster_centers_[:,0], kmeans.cluster_centers_[:,1], kmeans.cluster_centers_[:,2], marker='*', s=50, c='red')
+
+graph1.set_zlim3d(bottom=0, top=1);
+plt.title('Clustering Result_과일류')
+graph1.set_xlabel('VitB6(mg)')
+graph1.set_ylabel('DFE(μg)')
+graph1.set_zlabel('VitB12(μg)')
+plt.show()
+
+######################################################################
+pred_y = np.transpose(pred_y)
+result_df = pd.DataFrame({'식품코드':df['식품코드'],
+                          '식품군': df['식품군'],
+                          '식품명(국문)': df['식품명(국문)'],
+                          '식품명(영문)' : df['식품명(영문)'],
+                          '비타민 B6(mg)' : df['비타민 B6(mg)'],
+                          '엽산(μg)' : df['엽산(μg)\n(DFE)'],
+                          '비타민 B12(μg)' : df['비타민 B12(μg)'],
+                          'cluster(번호)':pred_y})
+
+result_df_sort = result_df.sort_values(by=['cluster(번호)', '식품명(국문)'], ascending=True)
+
+######################################################################
+
+import openpyxl
+result_df_sort.to_excel('과일류_result.xlsx')
+
+######################################################################
+
+#centroid rescaling 하여 엑셀 파일 생성
+
+rescale_data = minmax_scaler.inverse_transform(data_3d)
+rescale_centroid = minmax_scaler.inverse_transform(kmeans.cluster_centers_)
+
+centroidResult = pd.DataFrame({'VitB6': rescale_centroid[:,0],
+                               'DFE': rescale_centroid[:,1],
+                               'VitB12': rescale_centroid[:,2]})
+centroidResult.to_excel('과일류_rescaled_centroid.xlsx')
+
